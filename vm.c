@@ -304,25 +304,25 @@ freevm(pde_t *pgdir)
 // Select a page-table entry which is mapped
 // but not accessed. Notice that the user memory
 // is mapped between 0...KERNBASE.
-pte_t*
+/*pte_t*
 select_a_victim(pde_t *pgdir)
 {
 	return 0;
-}
+}*/
 
-// Clear access bit of a random pte.
-void
-clearaccessbit(pde_t *pgdir)
-{
-}
+// // Clear access bit of a random pte.
+// void
+// clearaccessbit(pde_t *pgdir)
+// {
+// }
 
 // return the disk block-id, if the virtual address
 // was swapped, -1 otherwise.
-int
+/*int
 getswappedblk(pde_t *pgdir, uint va)
 {
   return -1;
-}
+}*/
 
 // Clear PTE_U on a page. Used to create an inaccessible
 // page beneath the user stack.
