@@ -84,17 +84,43 @@ balloc(uint dev)
  */
 uint
 balloc_page(uint dev)
-{
-	return -1;
-}
+{  
+  int b, bi, m;
+  int b_first, b_last, bi_first;
+  struct buf *bp;
 
-/* Free disk blocks allocated using balloc_page.
- */
-void
-bfree_page(int dev, uint b)
-{
+  bp = 0;
+  b_first = 0;
+  bi_first = 0;
+  for(b = 0; b < sb.size; b+= BPB){
+    bp = bread(dev, BBLOCK(b, sb));
+    // num_free_blocks = 0;
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
+      m = 1 << (bi % 8);
+      if((bp->data[bi/8] & m) == 0){
+        b_last = b;
+        if( b_last == b_first ){
+          bi_first = bi;
+        }
+        bp->data[bi/8] |= m;
+        log_write(bp);
+        brelse(bp);
+        bzero(dev, b + bi);
+      }
+      else {
+        b_first = b+1;
+        b_last = b+1;
+      }
+      if( b_last - b_first == (8 - 1) ) {
+        // result yaha hai
+        return b_first + bi_first;
+      }
+    }
+    brelse(bp);
+  }
+  panic("Ran out of blocks! - CUSTOM");
+	// return -1;
 }
-
 // Free a disk block.
 static void
 bfree(int dev, uint b)
@@ -112,6 +138,29 @@ bfree(int dev, uint b)
   log_write(bp);
   brelse(bp);
 }
+
+/* Free disk blocks allocated using balloc_page.
+ */
+void
+bfree_page(int dev, uint b)
+{
+  struct buf *bp;
+  int bi, m;
+
+  readsb(dev, &sb);
+  for(int i = b; i < b + 8; i++){
+    bp = bread(dev, BBLOCK(i, sb));
+    bi = i % BPB;
+    m = 1 << (bi % 8);
+    if(( bp->data[bi/8] & m) == 0){
+      panic("freeing free block");
+    } 
+    bp->data[bi/8] &= ~m;
+    log_write(bp);
+    brelse(bp);
+  }
+}
+
 
 // Inodes.
 //
