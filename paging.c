@@ -18,6 +18,11 @@
 void
 swap_page_from_pte(pte_t *pte)
 {
+	uint addr = balloc_page(ROOTDEV);
+	uint ppn = PTE_ADDR(*pte);	
+	char *pg = (char *)P2V(ppn);
+	write_page_to_disk(ROOTDEV, pg, addr);
+	*pte = addr; ///> Check if it makes sense
 }
 
 /* Select a victim and swap the contents to the disk.
@@ -25,6 +30,7 @@ swap_page_from_pte(pte_t *pte)
 int
 swap_page(pde_t *pgdir)
 {
+	
 	panic("swap_page is not implemented");
 	return 1;
 }
