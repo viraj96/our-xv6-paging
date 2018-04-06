@@ -148,12 +148,12 @@ bfree_page(int dev, uint b)
   int bi, m;
 
   readsb(dev, &sb);
-  for(int i = b; i < b + 8; i++){
+  for(uint i = b; i < b + 8; i++){
     bp = bread(dev, BBLOCK(i, sb));
     bi = i % BPB;
     m = 1 << (bi % 8);
     if(( bp->data[bi/8] & m) == 0){
-      panic("freeing free block");
+      panic("freeing free block - CUSTOM");
     } 
     bp->data[bi/8] &= ~m;
     log_write(bp);
