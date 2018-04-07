@@ -42,6 +42,7 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
 pte_t*
 select_a_victim(pde_t *pgdir)
 {
+	// cprintf("SELECT A VICTIM");
 	for(;;) {
 		for(int i = 0; i < NPDENTRIES; i++) {
 			if( pgdir[i] & ~(PTE_A) ) {
@@ -58,9 +59,11 @@ select_a_victim(pde_t *pgdir)
 int
 getswappedblk(pde_t *pgdir, uint va)
 {
+	// cprintf("GET SWAPPED BLK");
 	pte_t *potential = walkpgdir(pgdir, (char*)va, 0);
 	if( *potential & ~(PTE_P) ) {
 		// in swap
+		return PTE_ADDR(*potential);
 	}
 	else {
   		return -1;
@@ -73,6 +76,7 @@ getswappedblk(pde_t *pgdir, uint va)
 void
 clearaccessbit(pde_t *pgdir)
 {
+	// cprintf("CLEAR ACCESS BIT");
 	int random_no = 10 % NPDENTRIES;
 	pde_t *pde = &pgdir[random_no];
 	pte_t *random_pte = (pte_t*)P2V(PTE_ADDR(*pde));
@@ -90,19 +94,23 @@ swap_page_from_pte(pte_t *pte)
 	uint addr = balloc_page(ROOTDEV);
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
+	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
 	write_page_to_disk(ROOTDEV, pg, addr);
-	*pte = addr; ///> Check if it makes sense
+	*pte &= ~(PTE_P);
+	*pte = addr; ///> Check if it makes sense -> reserve some bit? WHAT?
+	kfree(pg);
 }
 
 /* Select a victim and swap the contents to the disk.
  */
-int
+pte_t*
 swap_page(pde_t *pgdir)
 {
+	// cprintf("SWAP PAGE");
 	pte_t *victim = select_a_victim(pgdir);
 	swap_page_from_pte(victim);
 	// panic("swap_page is not implemented");
-	return 1;
+	return victim;
 }
 
 /* Map a physical page to the virtual address addr.
@@ -113,16 +121,20 @@ swap_page(pde_t *pgdir)
 void
 map_address(pde_t *pgdir, uint addr)
 {
+	// cprintf("MAP ADDRESS");
 	pte_t *target;
-	int swap_blk;
+	// int swap_blk;
 
-	target = walkpgdir(pgdir, (char *)addr, 1); //Recheck for round down !!!
+	if( (target = walkpgdir(pgdir, (char *)addr, 1)) == 0 ) {
+		target = swap_page(pgdir);
+	} //Recheck for round down !!!
 	uint ppn = PTE_ADDR(*target);	
 	char *pg = (char *)P2V(ppn);
 
-	if((swap_blk = getswappedblk(pgdir, addr)) != -1){
-		read_page_from_disk(ROOTDEV, pg, swap_blk);
-		bfree_page(ROOTDEV, swap_blk);
+	// if((swap_blk = getswappedblk(pgdir, addr)) != -1){
+	if( (*target & ~(PTE_P)) ){
+		read_page_from_disk(ROOTDEV, pg, *target);
+		bfree_page(ROOTDEV, *target);
 	}
 
 	// panic("map_address is not implemented");
@@ -132,6 +144,7 @@ map_address(pde_t *pgdir, uint addr)
 void
 handle_pgfault()
 {
+	// cprintf("HANDLE PGFAULT");
 	unsigned addr;
 	struct proc *curproc = myproc();
 
