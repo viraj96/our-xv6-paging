@@ -139,11 +139,12 @@ select_a_victim(pde_t *pgdir)
 		for(int i = 0; i < NPDENTRIES; i++) {
 			pde_t *pde = &pgdir[i];
 			pte_t *pte = (pte_t*)P2V(PTE_ADDR(*pde));
-			if( (*pte & PTE_A) == 0 && *pte < KERNBASE ) {
+			if( (*pte & PTE_A) == 0 && (*pte & PTE_P) ) {
 				return pte;
 			}
 		}
 		clearaccessbit(pgdir);	
+		cprintf("FULL LOOP DONE!");
 	}
 	return 0;
 }
@@ -186,7 +187,6 @@ swap_page_from_pte(pte_t *pte)
 	uint addr = balloc_page(ROOTDEV);
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
-	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
 	write_page_to_disk(ROOTDEV, pg, addr);
 	*pte &= ~(PTE_P);
 	*pte |= PTE_SWAP;
@@ -194,6 +194,7 @@ swap_page_from_pte(pte_t *pte)
 		panic("Received more than i can handle!");
 	}
 	*pte = (uint)(addr << 12) | (*pte & 0xFFF);
+	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
 }
 
 /* Select a victim and swap the contents to the disk.
