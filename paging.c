@@ -150,7 +150,9 @@ clearaccessbit(pde_t *pgdir)
 void
 swap_page_from_pte(pte_t *pte)
 {
+	// begin_op();
 	uint addr = balloc_page(ROOTDEV);
+	// end_op();
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
 	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
@@ -188,14 +190,18 @@ map_address(pde_t *pgdir, uint addr)
 	pte_t *pgtab;
 	cprintf("MAP ADDRESS\n");
 	pde = &pgdir[PDX(addr)];
-	if( (*pde & ~(PTE_P)) && (*pde & ~(PTE_SWAP)) ) {
+	if( (*pde & (PTE_P|PTE_SWAP)) != 0 ) {
 		cprintf("first if\n");
 		cprintf("*pde = %x\n", *pde);
+		cprintf("addr = %d\n", addr);
 		// call allocuvm
 		uint page_aligned = PGROUNDDOWN(addr);
 		int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+		cprintf("Here1\n");
 		while( size == 0 ) {
+			cprintf("Inside while!!");
 			swap_page(pgdir);
+			cprintf("Here2\n");
 			size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
 		}
 		cprintf("size = %d\n", size);
@@ -203,7 +209,7 @@ map_address(pde_t *pgdir, uint addr)
 	else {
 		cprintf("else\n");
 		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
-		if( (pgtab[PTX(addr)] & ~(PTE_P)) && (pgtab[PTX(addr)] & ~(PTE_SWAP)) ) {
+		if( (pgtab[PTX(addr)] & (PTE_P|PTE_SWAP)) != 0 ) {
 			// call allocuvm
 			uint page_aligned = PGROUNDDOWN(addr);
 			int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
@@ -215,7 +221,9 @@ map_address(pde_t *pgdir, uint addr)
 		else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
 			uint blk = (uint)pgtab >> 12;
 			read_page_from_disk(ROOTDEV, (char *)pgtab, blk);
+			// begin_op();
 			bfree_page(ROOTDEV, blk);
+			// end_op();
 		}
 	}
 }

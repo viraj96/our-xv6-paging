@@ -31,6 +31,7 @@ mem(void)
 		goto failed;
 	}
 	start = m1;
+	printf(1, "First malloc done!\n");
 
 	while (cur < TOTAL_MEMORY) {
 		m2 = malloc(4096);
@@ -45,6 +46,8 @@ mem(void)
 	}
 	((int*)m1)[2] = count;
 	total_count = count;
+
+	printf(1, "Second malloc done!\n");
 
 	count = 0;
 	m1 = start;

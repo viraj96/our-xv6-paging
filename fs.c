@@ -85,6 +85,7 @@ balloc(uint dev)
 uint
 balloc_page(uint dev)
 {  
+  begin_op();
   int b, bi, m;
   int b_first, b_last, bi_first;
   struct buf *bp;
@@ -120,6 +121,7 @@ balloc_page(uint dev)
     brelse(bp);
   }
   panic("Ran out of blocks! - CUSTOM");
+  end_op();
 	// return -1;
 }
 // Free a disk block.
@@ -145,6 +147,7 @@ bfree(int dev, uint b)
 void
 bfree_page(int dev, uint b)
 {
+  begin_op();
   struct buf *bp;
   int bi, m;
 
@@ -161,6 +164,7 @@ bfree_page(int dev, uint b)
     brelse(bp);
   }
   numallocblocks -= 8;
+  end_op();
 }
 
 
