@@ -139,11 +139,11 @@ select_a_victim(pde_t *pgdir)
 		for(int i = 0; i < NPDENTRIES; i++) {
 			pde_t *pde = &pgdir[i];
 			pte_t *pte = (pte_t*)P2V(PTE_ADDR(*pde));
-			if( *pte & ~(PTE_A) ) {
+			if( (*pte & PTE_A) == 0 && *pte < KERNBASE ) {
 				return pte;
 			}
 		}
-		clearaccessbit(pgdir);		
+		clearaccessbit(pgdir);	
 	}
 	return 0;
 }
@@ -153,11 +153,9 @@ select_a_victim(pde_t *pgdir)
 int
 getswappedblk(pde_t *pgdir, uint va)
 {
-	// cprintf("GET SWAPPED BLK");
 	pte_t *potential = walkpgdir(pgdir, (char*)va, 0);
 	if( *potential & PTE_SWAP ) {
-		// in swap
-		return PTE_ADDR(*potential);
+		return (int)(PTE_ADDR(*potential));
 	}
 	else {
   		return -1;
@@ -185,21 +183,17 @@ clearaccessbit(pde_t *pgdir)
 void
 swap_page_from_pte(pte_t *pte)
 {
-	cprintf("going to fail!\n");
 	uint addr = balloc_page(ROOTDEV);
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
 	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
-	cprintf("Before!!!\n");
 	write_page_to_disk(ROOTDEV, pg, addr);
-	cprintf("After!!!\n");
 	*pte &= ~(PTE_P);
 	*pte |= PTE_SWAP;
 	if( addr > (1 << 20) ) {
 		panic("Received more than i can handle!");
 	}
 	*pte = (uint)(addr << 12) | (*pte & 0xFFF);
-	// *pte &= (uint)(addr << 12);
 }
 
 /* Select a victim and swap the contents to the disk.
@@ -207,14 +201,10 @@ swap_page_from_pte(pte_t *pte)
 pte_t*
 swap_page(pde_t *pgdir)
 {
-	// cprintf("SWAP PAGE");
 	pte_t *victim = select_a_victim(pgdir);
-	cprintf("Victim selected!\n");
-
-	cprintf("victim = %x", *victim);
+	cprintf("victim = %x\n", *victim);
 	swap_page_from_pte(victim);
 	cprintf("Success!\n");
-	// panic("swap_page is not implemented");
 	return victim;
 }
 
@@ -229,22 +219,22 @@ map_address(pde_t *pgdir, uint addr)
 	pde_t *pde;
 	pte_t *pgtab;
 	cprintf("MAP ADDRESS\n");
+	cprintf("addr = %x\n", addr);
 	pde = &pgdir[PDX(addr)];
 	if( *pde == 0 ) {
-		cprintf("Inside if");
+		cprintf("PDE is ZERO\n");
 		int size = allocuvm(pgdir, addr, addr + PGSIZE);
 		while( size == 0 ) {
-			cprintf("Inside while\n");
 			pte_t* victim = swap_page(pgdir);
 			deallocuvm(pgdir, *victim, *victim - PGSIZE);
 			size = allocuvm(pgdir, *victim - PGSIZE, *victim);
 		}
+		cprintf("Out\n");
 	}
 	else if( (*pde & (PTE_P)) == 0 ) {
-		cprintf("first else if\n");
+		cprintf("PDE is NOT PRESENT\n");
 		int size = allocuvm(pgdir, addr, addr + PGSIZE);
 		while( size == 0 ) {
-			cprintf("Inside while!!\n");
 			pte_t* victim = swap_page(pgdir);
 			deallocuvm(pgdir, *victim, *victim - PGSIZE);
 			size = allocuvm(pgdir, *victim - PGSIZE, *victim);
@@ -252,23 +242,33 @@ map_address(pde_t *pgdir, uint addr)
 		cprintf("size = %d\n", size);
 	}
 	else if( *pde & PTE_P ) {		
-		cprintf("else\n");
+		cprintf("PDE is PRESENT\n");
 		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));		
-		if( (pgtab[PTX(addr)] & PTE_SWAP) == 0 ) {
-			int size = allocuvm(pgdir, addr, addr + PGSIZE);
-			while( size == 0 ) {
-				cprintf("Inside while\n");
-				pte_t* victim = swap_page(pgdir);
-				deallocuvm(pgdir, *victim, *victim - PGSIZE);
-				size = allocuvm(pgdir, *victim - PGSIZE, *victim);
+		if( (pgtab[PTX(addr)] & PTE_P) ) {
+			cprintf("PTE is PRESENT\n");
+		}
+		else {
+			cprintf("PTE is NOT PRESENT\n");
+			if( (pgtab[PTX(addr)] & PTE_SWAP) == 0 ) {
+				cprintf("PTE is NOT SWAPPED\n");
+				int size = allocuvm(pgdir, addr, addr + PGSIZE);
+				while( size == 0 ) {
+					pte_t* victim = swap_page(pgdir);
+					deallocuvm(pgdir, *victim, *victim - PGSIZE);
+					size = allocuvm(pgdir, *victim - PGSIZE, *victim);
+				}
+				cprintf("Out\n");
+			}
+			else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
+				cprintf("PTE is SWAPPED\n");
+				uint blk = getswappedblk(pgdir, addr);
+				blk = blk >> 12;
+				read_page_from_disk(ROOTDEV, (char *)pgtab[PTX(addr)], blk);
+				pgtab[PTX(addr)] &= ~(PTE_SWAP);
+				bfree_page(ROOTDEV, blk);
 			}
 		}
-		else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
-			uint blk = (uint)(pgtab[PTX(addr)] >> 12);
-			read_page_from_disk(ROOTDEV, (char *)pgtab[PTX(addr)], blk);
-			pgtab[PTX(addr)] &= ~(PTE_SWAP);
-			bfree_page(ROOTDEV, blk);
-		}
+
 	}
 }
 

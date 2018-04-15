@@ -127,7 +127,7 @@ begin_op(void)
 {
   // cprintf("inside begin_op!\n");
   acquire(&log.lock);
-  // cprintf("acquired lock!!\n");
+  cprintf("acquired lock!!\n");
   while(1){
     if(log.committing){
       // cprintf("sleeping1!!\n");
@@ -139,7 +139,7 @@ begin_op(void)
     } else {
       log.outstanding += 1;
       release(&log.lock);
-      // cprintf("release lock!!\n");
+      cprintf("release lock!!\n");
       break;
     }
     // cprintf("Stuck!");

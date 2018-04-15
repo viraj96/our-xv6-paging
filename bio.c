@@ -98,9 +98,7 @@ bget(uint dev, uint blockno)
 void
 write_page_to_disk(uint dev, char *pg, uint blk)
 {
-  cprintf("What?!\n");
-  // begin_op();
-  cprintf("in writing part!\n");
+  begin_op();
   struct buf *bp = 0;
   for(int i = 0; i < 8; i++) {
     cprintf("Wrote i = %d\n", i);
@@ -108,7 +106,9 @@ write_page_to_disk(uint dev, char *pg, uint blk)
     for(int j = 0; j < BSIZE; j++) {
       bp->data[j] = pg[i*BSIZE + j];
     }
-    bwrite(bp);
+    // begin_op();
+    log_write(bp);
+    // end_op();
     brelse(bp);
   }
   end_op();
@@ -120,14 +120,20 @@ write_page_to_disk(uint dev, char *pg, uint blk)
 void
 read_page_from_disk(uint dev, char *pg, uint blk)
 {
+  begin_op();
   struct buf *bp;
   for(uint i = 0; i < 8; i++) {
+    cprintf("Read i = %d\n", i);
     bp = bread(dev, blk);    
     for(int j = 0; j < BSIZE; j++) {
       pg[i*BSIZE + j] = bp->data[j];
     }
+    // begin_op();
+    log_write(bp);
+    // end_op();
     brelse(bp);
   }
+  end_op();
 }
 
 // Return a locked buf with the contents of the indicated block.

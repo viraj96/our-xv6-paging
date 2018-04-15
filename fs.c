@@ -85,12 +85,13 @@ balloc(uint dev)
 uint
 balloc_page(uint dev)
 {  
-  begin_op();
+  // begin_op();
   int b, bi, m;
   struct buf *bp;
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
+    begin_op();
     bp = bread(dev, BBLOCK(b, sb));
     for(bi = 0; bi < BPB && b + bi < sb.size; bi += 8) {
       // m = 1 << (bi % 8);
@@ -100,13 +101,15 @@ balloc_page(uint dev)
         log_write(bp);
         brelse(bp);
         bzero(dev, b + bi);
+        end_op();
         return b + bi;
       }
     }
-  brelse(bp);
+    brelse(bp);
+    end_op();
   }
   panic("Ran out of blocks! - CUSTOM");
-  end_op();
+  // end_op();
 	// return -1;
 }
 // Free a disk block.
@@ -135,13 +138,14 @@ bfree_page(int dev, uint b)
   begin_op();
   struct buf *bp;
   int bi, m;
-
   readsb(dev, &sb);
   bp = bread(dev, BBLOCK(b, sb));
   m = 255;
   bi = b % BPB;
-  bp->data[bi/8] &= ~m;
+  bp->data[bi/8] &= ~(m);
+  // begin_op();
   log_write(bp);
+  // end_op();
   brelse(bp);
   numallocblocks -= 8;
   end_op();

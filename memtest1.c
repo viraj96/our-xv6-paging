@@ -13,6 +13,8 @@ char name[3];
 char *echoargv[] = { "echo", "ALL", "TESTS", "PASSED", 0 };
 int stdout = 1;
 #define TOTAL_MEMORY (2 << 20) + (1 << 18) + (1 << 17)
+// #define TOTAL_MEMORY 100
+
 
 void
 mem(void)
