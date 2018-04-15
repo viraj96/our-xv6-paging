@@ -125,18 +125,24 @@ recover_from_log(void)
 void
 begin_op(void)
 {
+  // cprintf("inside begin_op!\n");
   acquire(&log.lock);
+  // cprintf("acquired lock!!\n");
   while(1){
     if(log.committing){
+      // cprintf("sleeping1!!\n");
       sleep(&log, &log.lock);
     } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
       // this op might exhaust log space; wait for commit.
+      // cprintf("sleeping2!!\n");
       sleep(&log, &log.lock);
     } else {
       log.outstanding += 1;
       release(&log.lock);
+      // cprintf("release lock!!\n");
       break;
     }
+    // cprintf("Stuck!");
   }
 }
 

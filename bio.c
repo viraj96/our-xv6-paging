@@ -98,15 +98,20 @@ bget(uint dev, uint blockno)
 void
 write_page_to_disk(uint dev, char *pg, uint blk)
 {
-  struct buf *bp = 0; // CHECK initialization
-  acquiresleep(&bp->lock); // make the whole function blocking -> avoid data race
+  cprintf("What?!\n");
+  // begin_op();
+  cprintf("in writing part!\n");
+  struct buf *bp = 0;
   for(int i = 0; i < 8; i++) {
+    cprintf("Wrote i = %d\n", i);
+    bp = bread(dev, blk + i);
     for(int j = 0; j < BSIZE; j++) {
       bp->data[j] = pg[i*BSIZE + j];
     }
     bwrite(bp);
+    brelse(bp);
   }
-  brelse(bp);
+  end_op();
 }
 
 /* Read 4096 bytes from the eight consecutive
@@ -116,19 +121,11 @@ void
 read_page_from_disk(uint dev, char *pg, uint blk)
 {
   struct buf *bp;
-  int counter = 0;
-  for(uint i = blk; i < blk + 8; i++) {
-    bp = bread(dev, i);    
-    // if( i == blk ) {
-      // strncpy(pg, (char*)bp->data, BSIZE);
+  for(uint i = 0; i < 8; i++) {
+    bp = bread(dev, blk);    
     for(int j = 0; j < BSIZE; j++) {
-      pg[counter] = bp->data[j];
-      counter += 1;
+      pg[i*BSIZE + j] = bp->data[j];
     }
-    // }
-    // else {
-    //   strncat(pg, (char*)bp->data, BSIZE);
-    // }
     brelse(bp);
   }
 }

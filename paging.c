@@ -82,12 +82,14 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if(mem == 0){
       //cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
+      cprintf("SHIT!\n");
       return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       //cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
+      cprintf("SHIT1!\n");
       kfree(mem);
       return 0;
     }
@@ -104,8 +106,10 @@ select_a_victim(pde_t *pgdir)
 	// cprintf("SELECT A VICTIM");
 	for(;;) {
 		for(int i = 0; i < NPDENTRIES; i++) {
-			if( pgdir[i] & ~(PTE_A) ) {
-				return (pte_t*)P2V(PTE_ADDR(pgdir[i]));
+			pde_t *pde = &pgdir[i];
+			pte_t *pte = (pte_t*)P2V(PTE_ADDR(*pde));
+			if( *pte & ~(PTE_A) ) {
+				return pte;
 			}
 		}
 		clearaccessbit(pgdir);		
@@ -150,11 +154,8 @@ clearaccessbit(pde_t *pgdir)
 void
 swap_page_from_pte(pte_t *pte)
 {
-	// begin_op();
 	cprintf("going to fail!\n");
 	uint addr = balloc_page(ROOTDEV);
-	cprintf("Failure!\n");
-	// end_op();
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
 	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
@@ -167,7 +168,6 @@ swap_page_from_pte(pte_t *pte)
 		panic("Received more than i can handle!");
 	}
 	*pte &= (uint)(addr << 12);
-	kfree(pg);
 }
 
 /* Select a victim and swap the contents to the disk.
@@ -178,6 +178,8 @@ swap_page(pde_t *pgdir)
 	// cprintf("SWAP PAGE");
 	pte_t *victim = select_a_victim(pgdir);
 	cprintf("Victim selected!\n");
+
+	cprintf("victim = %x", *victim);
 	swap_page_from_pte(victim);
 	cprintf("Success!\n");
 	// panic("swap_page is not implemented");
@@ -196,6 +198,10 @@ map_address(pde_t *pgdir, uint addr)
 	pte_t *pgtab;
 	cprintf("MAP ADDRESS\n");
 	pde = &pgdir[PDX(addr)];
+	cprintf("pgdir = %x\n", *pgdir);
+	cprintf("addr = %x\n", addr);
+	cprintf("PDX(addr) = %x\n", PDX(addr));
+	cprintf("*pde = %x\n", *pde);
 	if( (*pde & (PTE_P|PTE_SWAP)) != 0 ) {
 		cprintf("first if\n");
 		cprintf("*pde = %x\n", *pde);
@@ -206,28 +212,60 @@ map_address(pde_t *pgdir, uint addr)
 		cprintf("Here1\n");
 		while( size == 0 ) {
 			cprintf("Inside while!!\n");
-			swap_page(pgdir);
+			pte_t* victim = swap_page(pgdir);
+			page_aligned = PGROUNDDOWN(*victim);
+			// uint page_aligned_victim = PGROUNDUP(*victim);
+			// deallocuvm(pgdir, page_aligned_victim, page_aligned_victim + PGSIZE);
 			cprintf("Here2\n");
 			size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
 		}
 		cprintf("size = %d\n", size);
 	}
+	// else if( *pde == 0 ) {
+	// 	cprintf("Inside else if");
+	// 	uint page_aligned = PGROUNDDOWN(addr);
+	// 	int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+	// 	cprintf("Here3\n");
+	// 	while( size == 0 ) {
+	// 		cprintf("Inside while\n");
+	// 		swap_page(pgdir);
+	// 		cprintf("Here4\n");
+	// 		size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+	// 	}
+	// }
 	else {
+		if( *pde & PTE_P ) {
+			cprintf("Correct!!");
+		}
 		cprintf("else\n");
 		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+		cprintf("pgtab = %x\n", pgtab);
+		cprintf("PTX(addr) = %x\n", PTX(addr));
+		cprintf("pgtab[PTX(addr)] = %x\n", pgtab[PTX(addr)]);
 		if( (pgtab[PTX(addr)] & (PTE_P|PTE_SWAP)) != 0 ) {
 			// call allocuvm
+			cprintf("second if\n");
+			cprintf("*pde = %x\n", *pde);
+			cprintf("addr = %d\n", addr);
 			uint page_aligned = PGROUNDDOWN(addr);
 			int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+			cprintf("Here3\n");
 			while( size == 0 ) {
-				swap_page(pgdir);
+				cprintf("Inside while\n");
+				pte_t* victim = swap_page(pgdir);
+				page_aligned = PGROUNDDOWN(*victim);
+				// uint page_aligned_victim = PGROUNDUP(*victim);
+				// deallocuvm(pgdir, page_aligned_victim, page_aligned_victim + PGSIZE);
+				cprintf("Here4\n");
 				size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
 			}
 		}
 		else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
+			cprintf("third if\n");
 			uint blk = (uint)pgtab >> 12;
 			read_page_from_disk(ROOTDEV, (char *)pgtab, blk);
 			// begin_op();
+			pgtab[PTX(addr)] |= ~(PTE_SWAP);
 			bfree_page(ROOTDEV, blk);
 			// end_op();
 		}
