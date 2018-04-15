@@ -10,6 +10,7 @@
 #include "paging.h"
 #include "fs.h"
 
+int count = 0;
 
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
@@ -34,6 +35,64 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
     *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
   }
   return &pgtab[PTX(va)];
+}
+
+// Create PTEs for virtual addresses starting at va that refer to
+// physical addresses starting at pa. va and size might not
+// be page-aligned.
+static int
+mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+  char *a, *last;
+  pte_t *pte;
+
+  a = (char*)PGROUNDDOWN((uint)va);
+  last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+  for(;;){
+    if((pte = walkpgdir(pgdir, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_P)
+      panic("remap");
+    *pte = pa | perm | PTE_P;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+
+// Allocate page tables and physical memory to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
+int
+allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+{
+  char *mem;
+  uint a;
+
+  if(newsz >= KERNBASE)
+    return 0;
+  if(newsz < oldsz)
+    return oldsz;
+
+  a = PGROUNDUP(oldsz);
+  
+  for(; a < newsz; a += PGSIZE){
+    mem = kalloc();
+    if(mem == 0){
+      //cprintf("allocuvm out of memory\n");
+      deallocuvm(pgdir, newsz, oldsz);
+      return 0;
+    }
+    memset(mem, 0, PGSIZE);
+    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+      //cprintf("allocuvm out of memory (2)\n");
+      deallocuvm(pgdir, newsz, oldsz);
+      kfree(mem);
+      return 0;
+    }
+  }
+  return newsz;
 }
 
 // Select a page-table entry which is mapped
@@ -61,7 +120,7 @@ getswappedblk(pde_t *pgdir, uint va)
 {
 	// cprintf("GET SWAPPED BLK");
 	pte_t *potential = walkpgdir(pgdir, (char*)va, 0);
-	if( *potential & ~(PTE_P) ) {
+	if( *potential & PTE_SWAP ) {
 		// in swap
 		return PTE_ADDR(*potential);
 	}
@@ -97,7 +156,11 @@ swap_page_from_pte(pte_t *pte)
 	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
 	write_page_to_disk(ROOTDEV, pg, addr);
 	*pte &= ~(PTE_P);
-	*pte = addr; ///> Check if it makes sense -> reserve some bit? WHAT?
+	*pte |= PTE_SWAP;
+	if( addr > (1 << 20) ) {
+		panic("Received more than i can handle!");
+	}
+	*pte &= (uint)(addr << 12);
 	kfree(pg);
 }
 
@@ -121,30 +184,49 @@ swap_page(pde_t *pgdir)
 void
 map_address(pde_t *pgdir, uint addr)
 {
-	// cprintf("MAP ADDRESS");
-	pte_t *target;
-	// int swap_blk;
-
-	if( (target = walkpgdir(pgdir, (char *)addr, 1)) == 0 ) {
-		target = swap_page(pgdir);
-	} //Recheck for round down !!!
-	uint ppn = PTE_ADDR(*target);	
-	char *pg = (char *)P2V(ppn);
-
-	// if((swap_blk = getswappedblk(pgdir, addr)) != -1){
-	if( (*target & ~(PTE_P)) ){
-		read_page_from_disk(ROOTDEV, pg, *target);
-		bfree_page(ROOTDEV, *target);
+	pde_t *pde;
+	pte_t *pgtab;
+	cprintf("MAP ADDRESS\n");
+	pde = &pgdir[PDX(addr)];
+	if( (*pde & ~(PTE_P)) && (*pde & ~(PTE_SWAP)) ) {
+		cprintf("first if\n");
+		cprintf("*pde = %x\n", *pde);
+		// call allocuvm
+		uint page_aligned = PGROUNDDOWN(addr);
+		int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+		while( size == 0 ) {
+			swap_page(pgdir);
+			size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+		}
+		cprintf("size = %d\n", size);
 	}
-
-	// panic("map_address is not implemented");
+	else {
+		cprintf("else\n");
+		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+		if( (pgtab[PTX(addr)] & ~(PTE_P)) && (pgtab[PTX(addr)] & ~(PTE_SWAP)) ) {
+			// call allocuvm
+			uint page_aligned = PGROUNDDOWN(addr);
+			int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+			while( size == 0 ) {
+				swap_page(pgdir);
+				size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+			}
+		}
+		else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
+			uint blk = (uint)pgtab >> 12;
+			read_page_from_disk(ROOTDEV, (char *)pgtab, blk);
+			bfree_page(ROOTDEV, blk);
+		}
+	}
 }
 
 /* page fault handler */
 void
 handle_pgfault()
 {
-	// cprintf("HANDLE PGFAULT");
+	count += 1;
+	cprintf("HANDLE PGFAULT\n");
+	cprintf("count = %d\n", count);
 	unsigned addr;
 	struct proc *curproc = myproc();
 

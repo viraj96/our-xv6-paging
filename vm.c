@@ -218,38 +218,38 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
-// Allocate page tables and physical memory to grow process from oldsz to
-// newsz, which need not be page aligned.  Returns new size or 0 on error.
-int
-allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
-{
-  char *mem;
-  uint a;
+// // Allocate page tables and physical memory to grow process from oldsz to
+// // newsz, which need not be page aligned.  Returns new size or 0 on error.
+// int
+// allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+// {
+//   char *mem;
+//   uint a;
 
-  if(newsz >= KERNBASE)
-    return 0;
-  if(newsz < oldsz)
-    return oldsz;
+//   if(newsz >= KERNBASE)
+//     return 0;
+//   if(newsz < oldsz)
+//     return oldsz;
 
-  a = PGROUNDUP(oldsz);
+//   a = PGROUNDUP(oldsz);
   
-  for(; a < newsz; a += PGSIZE){
-    mem = kalloc();
-    if(mem == 0){
-      //cprintf("allocuvm out of memory\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      return 0;
-    }
-    memset(mem, 0, PGSIZE);
-    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
-      //cprintf("allocuvm out of memory (2)\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      kfree(mem);
-      return 0;
-    }
-  }
-  return newsz;
-}
+//   for(; a < newsz; a += PGSIZE){
+//     mem = kalloc();
+//     if(mem == 0){
+//       //cprintf("allocuvm out of memory\n");
+//       deallocuvm(pgdir, newsz, oldsz);
+//       return 0;
+//     }
+//     memset(mem, 0, PGSIZE);
+//     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+//       //cprintf("allocuvm out of memory (2)\n");
+//       deallocuvm(pgdir, newsz, oldsz);
+//       kfree(mem);
+//       return 0;
+//     }
+//   }
+//   return newsz;
+// }
 
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz

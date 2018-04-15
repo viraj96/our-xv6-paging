@@ -17,6 +17,7 @@ int stdout = 1;
 void
 mem(void)
 {
+	printf(1, "WHY??\n");
 	void *m1 = 0, *m2, *start;
 	uint cur = 0;
 	uint count = 0;
@@ -25,14 +26,18 @@ mem(void)
 	printf(1, "mem test\n");
 
 	m1 = malloc(4096);
-	if (m1 == 0)
+	if (m1 == 0) {
+		printf(1, "First malloc fail!\n");
 		goto failed;
+	}
 	start = m1;
 
 	while (cur < TOTAL_MEMORY) {
 		m2 = malloc(4096);
-		if (m2 == 0)
+		if (m2 == 0) {
+			printf(1, "Second malloc fail!\n");
 			goto failed;
+		}
 		*(char**)m1 = m2;
 		((int*)m1)[2] = count++;
 		m1 = m2;
@@ -45,8 +50,10 @@ mem(void)
 	m1 = start;
 
 	while (count != total_count) {
-		if (((int*)m1)[2] != count)
+		if (((int*)m1)[2] != count) {
+			printf(1, "Check fail!\n");
 			goto failed;
+		}
 		m1 = *(char**)m1;
 		count++;
 	}

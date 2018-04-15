@@ -113,6 +113,7 @@ balloc_page(uint dev)
       }
       if( b_last - b_first == (8 - 1) ) {
         // result yaha hai
+        numallocblocks += 8;
         return b_first + bi_first;
       }
     }
@@ -159,6 +160,7 @@ bfree_page(int dev, uint b)
     log_write(bp);
     brelse(bp);
   }
+  numallocblocks -= 8;
 }
 
 
