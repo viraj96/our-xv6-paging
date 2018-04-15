@@ -97,6 +97,37 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   return newsz;
 }
 
+// Deallocate user pages to bring the process size from oldsz to
+// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+// need to be less than oldsz.  oldsz can be larger than the actual
+// process size.  Returns the new process size.
+// If the page was swapped free the corresponding disk block.
+int
+deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+{
+  pte_t *pte;
+  uint a, pa;
+
+  if(newsz >= oldsz)
+    return oldsz;
+
+  a = PGROUNDUP(newsz);
+  for(; a  < oldsz; a += PGSIZE){
+    pte = walkpgdir(pgdir, (char*)a, 0);
+    if(!pte)
+      a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
+    else if((*pte & PTE_P) != 0){
+      pa = PTE_ADDR(*pte);
+      if(pa == 0)
+        panic("kfree");
+      char *v = P2V(pa);
+      kfree(v);
+      *pte = 0;
+    }
+  }
+  return newsz;
+}
+
 // Select a page-table entry which is mapped
 // but not accessed. Notice that the user memory
 // is mapped between 0...KERNBASE.
@@ -167,7 +198,8 @@ swap_page_from_pte(pte_t *pte)
 	if( addr > (1 << 20) ) {
 		panic("Received more than i can handle!");
 	}
-	*pte &= (uint)(addr << 12);
+	*pte = (uint)(addr << 12) | (*pte & 0xFFF);
+	// *pte &= (uint)(addr << 12);
 }
 
 /* Select a victim and swap the contents to the disk.
@@ -198,76 +230,44 @@ map_address(pde_t *pgdir, uint addr)
 	pte_t *pgtab;
 	cprintf("MAP ADDRESS\n");
 	pde = &pgdir[PDX(addr)];
-	cprintf("pgdir = %x\n", *pgdir);
-	cprintf("addr = %x\n", addr);
-	cprintf("PDX(addr) = %x\n", PDX(addr));
-	cprintf("*pde = %x\n", *pde);
-	if( (*pde & (PTE_P|PTE_SWAP)) != 0 ) {
-		cprintf("first if\n");
-		cprintf("*pde = %x\n", *pde);
-		cprintf("addr = %d\n", addr);
-		// call allocuvm
-		uint page_aligned = PGROUNDDOWN(addr);
-		int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
-		cprintf("Here1\n");
+	if( *pde == 0 ) {
+		cprintf("Inside if");
+		int size = allocuvm(pgdir, addr, addr + PGSIZE);
+		while( size == 0 ) {
+			cprintf("Inside while\n");
+			pte_t* victim = swap_page(pgdir);
+			deallocuvm(pgdir, *victim, *victim - PGSIZE);
+			size = allocuvm(pgdir, *victim - PGSIZE, *victim);
+		}
+	}
+	else if( (*pde & (PTE_P)) == 0 ) {
+		cprintf("first else if\n");
+		int size = allocuvm(pgdir, addr, addr + PGSIZE);
 		while( size == 0 ) {
 			cprintf("Inside while!!\n");
 			pte_t* victim = swap_page(pgdir);
-			page_aligned = PGROUNDDOWN(*victim);
-			// uint page_aligned_victim = PGROUNDUP(*victim);
-			// deallocuvm(pgdir, page_aligned_victim, page_aligned_victim + PGSIZE);
-			cprintf("Here2\n");
-			size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+			deallocuvm(pgdir, *victim, *victim - PGSIZE);
+			size = allocuvm(pgdir, *victim - PGSIZE, *victim);
 		}
 		cprintf("size = %d\n", size);
 	}
-	// else if( *pde == 0 ) {
-	// 	cprintf("Inside else if");
-	// 	uint page_aligned = PGROUNDDOWN(addr);
-	// 	int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
-	// 	cprintf("Here3\n");
-	// 	while( size == 0 ) {
-	// 		cprintf("Inside while\n");
-	// 		swap_page(pgdir);
-	// 		cprintf("Here4\n");
-	// 		size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
-	// 	}
-	// }
-	else {
-		if( *pde & PTE_P ) {
-			cprintf("Correct!!");
-		}
+	else if( *pde & PTE_P ) {		
 		cprintf("else\n");
-		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
-		cprintf("pgtab = %x\n", pgtab);
-		cprintf("PTX(addr) = %x\n", PTX(addr));
-		cprintf("pgtab[PTX(addr)] = %x\n", pgtab[PTX(addr)]);
-		if( (pgtab[PTX(addr)] & (PTE_P|PTE_SWAP)) != 0 ) {
-			// call allocuvm
-			cprintf("second if\n");
-			cprintf("*pde = %x\n", *pde);
-			cprintf("addr = %d\n", addr);
-			uint page_aligned = PGROUNDDOWN(addr);
-			int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
-			cprintf("Here3\n");
+		pgtab = (pte_t*)P2V(PTE_ADDR(*pde));		
+		if( (pgtab[PTX(addr)] & PTE_SWAP) == 0 ) {
+			int size = allocuvm(pgdir, addr, addr + PGSIZE);
 			while( size == 0 ) {
 				cprintf("Inside while\n");
 				pte_t* victim = swap_page(pgdir);
-				page_aligned = PGROUNDDOWN(*victim);
-				// uint page_aligned_victim = PGROUNDUP(*victim);
-				// deallocuvm(pgdir, page_aligned_victim, page_aligned_victim + PGSIZE);
-				cprintf("Here4\n");
-				size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
+				deallocuvm(pgdir, *victim, *victim - PGSIZE);
+				size = allocuvm(pgdir, *victim - PGSIZE, *victim);
 			}
 		}
 		else if( pgtab[PTX(addr)] & (PTE_SWAP) ) {
-			cprintf("third if\n");
-			uint blk = (uint)pgtab >> 12;
-			read_page_from_disk(ROOTDEV, (char *)pgtab, blk);
-			// begin_op();
-			pgtab[PTX(addr)] |= ~(PTE_SWAP);
+			uint blk = (uint)(pgtab[PTX(addr)] >> 12);
+			read_page_from_disk(ROOTDEV, (char *)pgtab[PTX(addr)], blk);
+			pgtab[PTX(addr)] &= ~(PTE_SWAP);
 			bfree_page(ROOTDEV, blk);
-			// end_op();
 		}
 	}
 }

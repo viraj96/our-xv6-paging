@@ -256,31 +256,31 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
 // If the page was swapped free the corresponding disk block.
-int
-deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
-{
-  pte_t *pte;
-  uint a, pa;
+// int
+// deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
+// {
+//   pte_t *pte;
+//   uint a, pa;
 
-  if(newsz >= oldsz)
-    return oldsz;
+//   if(newsz >= oldsz)
+//     return oldsz;
 
-  a = PGROUNDUP(newsz);
-  for(; a  < oldsz; a += PGSIZE){
-    pte = walkpgdir(pgdir, (char*)a, 0);
-    if(!pte)
-      a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
-    else if((*pte & PTE_P) != 0){
-      pa = PTE_ADDR(*pte);
-      if(pa == 0)
-        panic("kfree");
-      char *v = P2V(pa);
-      kfree(v);
-      *pte = 0;
-    }
-  }
-  return newsz;
-}
+//   a = PGROUNDUP(newsz);
+//   for(; a  < oldsz; a += PGSIZE){
+//     pte = walkpgdir(pgdir, (char*)a, 0);
+//     if(!pte)
+//       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
+//     else if((*pte & PTE_P) != 0){
+//       pa = PTE_ADDR(*pte);
+//       if(pa == 0)
+//         panic("kfree");
+//       char *v = P2V(pa);
+//       kfree(v);
+//       *pte = 0;
+//     }
+//   }
+//   return newsz;
+// }
 
 // Free a page table and all the physical memory pages
 // in the user part.
