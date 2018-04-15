@@ -87,38 +87,23 @@ balloc_page(uint dev)
 {  
   begin_op();
   int b, bi, m;
-  int b_first, b_last, bi_first;
   struct buf *bp;
 
   bp = 0;
-  b_first = 0;
-  bi_first = 0;
-  for(b = 0; b < sb.size; b+= BPB){
+  for(b = 0; b < sb.size; b += BPB){
     bp = bread(dev, BBLOCK(b, sb));
-    // num_free_blocks = 0;
-    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){
-        b_last = b;
-        if( b_last == b_first ){
-          bi_first = bi;
-        }
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi += 8) {
+      // m = 1 << (bi % 8);
+      if(bp->data[bi/8] == 0) {
+        m = 255;
         bp->data[bi/8] |= m;
         log_write(bp);
         brelse(bp);
         bzero(dev, b + bi);
-      }
-      else {
-        b_first = b+1;
-        b_last = b+1;
-      }
-      if( b_last - b_first == (8 - 1) ) {
-        // result yaha hai
-        numallocblocks += 8;
-        return b_first + bi_first;
+        return b + bi;
       }
     }
-    brelse(bp);
+  brelse(bp);
   }
   panic("Ran out of blocks! - CUSTOM");
   end_op();
@@ -152,17 +137,12 @@ bfree_page(int dev, uint b)
   int bi, m;
 
   readsb(dev, &sb);
-  for(uint i = b; i < b + 8; i++){
-    bp = bread(dev, BBLOCK(i, sb));
-    bi = i % BPB;
-    m = 1 << (bi % 8);
-    if(( bp->data[bi/8] & m) == 0){
-      panic("freeing free block - CUSTOM");
-    } 
-    bp->data[bi/8] &= ~m;
-    log_write(bp);
-    brelse(bp);
-  }
+  bp = bread(dev, BBLOCK(b, sb));
+  m = 255;
+  bi = b % BPB;
+  bp->data[bi/8] &= ~m;
+  log_write(bp);
+  brelse(bp);
   numallocblocks -= 8;
   end_op();
 }

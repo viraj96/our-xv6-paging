@@ -151,12 +151,16 @@ void
 swap_page_from_pte(pte_t *pte)
 {
 	// begin_op();
+	cprintf("going to fail!\n");
 	uint addr = balloc_page(ROOTDEV);
+	cprintf("Failure!\n");
 	// end_op();
 	uint ppn = PTE_ADDR(*pte);	
 	char *pg = (char *)P2V(ppn);
 	asm volatile("invlpg (%0)" ::"r" ((unsigned long)P2V(ppn)) : "memory");
+	cprintf("Before!!!\n");
 	write_page_to_disk(ROOTDEV, pg, addr);
+	cprintf("After!!!\n");
 	*pte &= ~(PTE_P);
 	*pte |= PTE_SWAP;
 	if( addr > (1 << 20) ) {
@@ -173,7 +177,9 @@ swap_page(pde_t *pgdir)
 {
 	// cprintf("SWAP PAGE");
 	pte_t *victim = select_a_victim(pgdir);
+	cprintf("Victim selected!\n");
 	swap_page_from_pte(victim);
+	cprintf("Success!\n");
 	// panic("swap_page is not implemented");
 	return victim;
 }
@@ -199,7 +205,7 @@ map_address(pde_t *pgdir, uint addr)
 		int size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
 		cprintf("Here1\n");
 		while( size == 0 ) {
-			cprintf("Inside while!!");
+			cprintf("Inside while!!\n");
 			swap_page(pgdir);
 			cprintf("Here2\n");
 			size = allocuvm(pgdir, page_aligned, page_aligned + PGSIZE);
